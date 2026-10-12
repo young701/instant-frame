@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>인스턴트 프레임</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nanum+Pen+Script&display=swap" rel="stylesheet">
+<style>
+  :root { --bg: #f2f0eb; --fg: #222; --muted: #6b6b6b; --line: #d3cec4; --accent: #222; --accent-fg: #fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #18181a; --fg: #eee; --muted: #a0a0a0; --line: #3a3a3d; --accent: #eee; --accent-fg: #111; }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, -apple-system, sans-serif; }
+  main { max-width: 440px; margin: 0 auto; padding: 16px; display: grid; gap: 16px; }
+  h1 { font-size: 20px; margin: 0; }
+  .vh { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+  .btn { display: block; text-align: center; padding: 12px; border-radius: 10px; border: 1px solid var(--line);
+    background: transparent; color: inherit; font: inherit; cursor: pointer; text-decoration: none; }
+  .btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .btn:has(input:focus-visible), .chip:has(input:focus-visible) { outline: 2px solid #3b82f6; outline-offset: 2px; }
+  .field { display: grid; gap: 4px; font-size: 14px; color: var(--muted); }
+  input[type=text] { font: inherit; padding: 10px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--fg); }
+  input[type=range] { width: 100%; }
+  fieldset { border: 0; padding: 0; margin: 0; display: flex; gap: 8px; flex-wrap: wrap; }
+  legend { font-size: 14px; color: var(--muted); margin-bottom: 4px; }
+  .chip { position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px;
+    border: 1px solid var(--line); border-radius: 999px; cursor: pointer; font-size: 14px; }
+  .chip:has(input:checked) { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  .sw { width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(128,128,128,.5); }
+  #error { color: #d64535; margin: 0; }
+  #error:empty { display: none; }
+  #result:not([hidden]) { display: grid; gap: 8px; }
+  #out { width: 100%; display: block; }
+  .hint { font-size: 14px; color: var(--muted); margin: 0; }
+  /* The preview is also the editor: drag/zoom the photo right on the card. */
+  #ecv { width: 100%; display: block; touch-action: none; box-shadow: 0 1px 2px rgba(0,0,0,.22), 0 10px 24px rgba(0,0,0,.18); }
+  .has-photo #ecv { cursor: grab; }
+  .has-photo #ecv:active { cursor: grabbing; }
+  .zoomrow { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; }
+  .zoomrow .btn { padding: 8px 14px; font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>인스턴트 프레임</h1>
+  <canvas id="ecv" role="img" aria-label="미리보기. 사진을 드래그해 옮기고, 두 손가락이나 휠로 확대해요."></canvas>
+  <p id="error" role="alert"></p>
+  <label class="btn primary">사진 선택<input id="file" class="vh" type="file" accept="image/*"></label>
+  <p class="hint">사진을 드래그해 옮기고, 두 손가락·휠·슬라이더로 확대하세요.</p>
+  <div class="zoomrow">
+    <label class="field">확대<input id="zoom" type="range" min="1" max="4" step="0.01" value="1" disabled></label>
+    <button id="recenter" class="btn" disabled>원위치</button>
+  </div>
+  <label class="field">캡션<input id="caption" type="text" maxlength="30" placeholder="한 줄 메모 (최대 30자)"></label>
+  <fieldset>
+    <legend>프레임</legend>
+    <label class="chip"><input class="vh" type="radio" name="frame" value="0.8" checked>4:5</label>
+    <label class="chip"><input class="vh" type="radio" name="frame" value="1">1:1</label>
+    <label class="chip"><input class="vh" type="radio" name="frame" value="1.91">1.91:1</label>
+  </fieldset>
+  <fieldset>
+    <legend>프레임 색</legend>
+    <label class="chip"><input class="vh" type="radio" name="paper" value="#F7F5F0" data-ink="#2A2A2A" checked><span class="sw" style="background:#F7F5F0"></span>크림</label>
+    <label class="chip"><input class="vh" type="radio" name="paper" value="#222222" data-ink="#EDEDED"><span class="sw" style="background:#222222"></span>블랙</label>
+    <label class="chip"><input class="vh" type="radio" name="paper" value="#F3D6D2" data-ink="#5A3A36"><span class="sw" style="background:#F3D6D2"></span>핑크</label>
+  </fieldset>
+  <button id="make" class="btn primary" disabled>이미지 만들기</button>
+  <section id="result" hidden>
+    <img id="out" alt="완성된 인스턴트 사진">
+    <p class="hint">iPhone: 이미지를 길게 눌러 ‘사진 앱에 저장’을 선택하세요.</p>
+    <a id="download" class="btn" download="instant-frame.jpg">다운로드</a>
+    <button id="share" class="btn" hidden>공유</button>
+  </section>
+</main>
+<script>
+// --- crop math (checked by crop.test.mjs) ---
+// Crop math, all in mm. State {z, ox, oy}: zoom (1 = image just covers the photo window)
+// and the image's top-left offset from the window's top-left. iw/ih = source px, pw/ph = window mm.
+const MAX_ZOOM = 4;
+
+const base = (iw, ih, pw, ph) => Math.max(pw / iw, ph / ih); // mm per source px at z=1
+
+function center(iw, ih, pw, ph) {
+  const k = base(iw, ih, pw, ph);
+  return { z: 1, ox: (pw - iw * k) / 2, oy: (ph - ih * k) / 2 };
+}
+
+// Keep the window fully covered: z in [1, MAX_ZOOM], image edges never inside the window.
+function clamp({ z, ox, oy }, iw, ih, pw, ph) {
+  z = Math.min(Math.max(z, 1), MAX_ZOOM);
+  const k = base(iw, ih, pw, ph) * z;
+  const lim = (o, size, win) => Math.min(0, Math.max(win - size * k, o));
+  return { z, ox: lim(ox, iw, pw), oy: lim(oy, ih, ph) };
+}
+
+// Zoom keeping the image point under (ax, ay) fixed.
+function zoomAt(s, z, ax, ay) {
+  z = Math.min(Math.max(z, 1), MAX_ZOOM);
+  const r = z / s.z;
+  return { z, ox: ax - (ax - s.ox) * r, oy: ay - (ay - s.oy) * r };
+}
+
+// Source rectangle for the 9-arg drawImage.
+function srcRect(s, iw, ih, pw, ph) {
+  const k = base(iw, ih, pw, ph) * s.z;
+  return [-s.ox / k, -s.oy / k, pw / k, ph / k];
+}
+// --- end crop math ---
+
+
+// All sizes in mm. Margins measured from a real Instax Mini scan.
+const SIDE = 4.5, TOP = 7, CHIN = 17;
+const frame = (pw, ph) => ({ w: pw + 2 * SIDE, h: TOP + ph + CHIN, x: SIDE, y: TOP, pw, ph });
+// The saved image is the card itself, in a fixed Instagram feed ratio (4:5, 1:1, 1.91:1), 1080px wide.
+// The photo never changes the card; it's cropped/zoomed inside the window instead.
+const OUT_W = 1080;
+
+// Card with outer ratio R (w/h), long side 107mm (classic instant size).
+function cardFor(R) {
+  const w = R >= 1 ? 107 : 107 * R, h = w / R;
+  return frame(w - 2 * SIDE, h - TOP - CHIN);
+}
+const MAX_SRC = 2400; // decoded source long edge, keeps iOS canvas memory small
+const FONT = '"Nanum Pen Script", cursive';
+
+const $ = (id) => document.getElementById(id);
+const zoom = $('zoom'), caption = $('caption');
+let paper = '#F7F5F0', ink = '#2A2A2A';
+let src = null, st = null, outUrl = null, outFile = null;
+let F = cardFor(0.8);
+
+const fit = (s) => clamp(s, src.width, src.height, F.pw, F.ph);
+
+// Paper grain, drawn in device pixels so it stays fine at any scale.
+const grain = document.createElement('canvas');
+grain.width = grain.height = 128;
+{
+  const g = grain.getContext('2d'), d = g.createImageData(128, 128);
+  for (let i = 0; i < d.data.length; i += 4) {
+    const v = Math.random() < 0.5 ? 0 : 255;
+    d.data[i] = d.data[i + 1] = d.data[i + 2] = v;
+    d.data[i + 3] = Math.random() * 14;
+  }
+  g.putImageData(d, 0, 0);
+}
+
+// One renderer for preview and export, so what you see is what you save.
+// k = device px per mm; the canvas is exactly the card.
+function render(ctx, k, dx = 0, dy = 0) { // dx/dy: card offset in device px
+  const chinTop = F.y + F.ph, chin = F.h - chinTop;
+  ctx.setTransform(k, 0, 0, k, dx, dy);
+  ctx.fillStyle = paper;
+  ctx.fillRect(0, 0, F.w, F.h);
+
+  // Light falloff top→bottom, and the faint seam where the developer pod sits in the chin.
+  let g = ctx.createLinearGradient(0, 0, 0, F.h);
+  g.addColorStop(0, 'rgba(255,255,255,.16)');
+  g.addColorStop(1, 'rgba(0,0,0,.06)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, F.w, F.h);
+  ctx.fillStyle = 'rgba(0,0,0,.025)';
+  ctx.fillRect(0, chinTop + chin * 0.26, F.w, chin * 0.74);
+  ctx.fillStyle = 'rgba(0,0,0,.05)';
+  ctx.fillRect(0, chinTop + chin * 0.26, F.w, 0.12);
+
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = ctx.createPattern(grain, 'repeat');
+  ctx.fillRect(dx, dy, F.w * k, F.h * k);
+  ctx.restore();
+
+  ctx.strokeStyle = 'rgba(0,0,0,.10)';
+  ctx.lineWidth = 0.12;
+  ctx.strokeRect(0.06, 0.06, F.w - 0.12, F.h - 0.12);
+
+  // Photo, recessed under the frame: inner shadow from the top edge plus a faint gloss.
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(F.x, F.y, F.pw, F.ph);
+  ctx.clip();
+  if (src) {
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(src, ...srcRect(st, src.width, src.height, F.pw, F.ph), F.x, F.y, F.pw, F.ph);
+  } else {
+    ctx.fillStyle = '#1c1c1c';
+    ctx.fillRect(F.x, F.y, F.pw, F.ph);
+  }
+  ctx.shadowColor = 'rgba(0,0,0,.45)';
+  ctx.shadowBlur = 0.9 * k;
+  ctx.shadowOffsetY = 0.3 * k;
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(F.x - 2, F.y - 2, F.pw + 4, F.ph + 4); // stroke lies outside the clip; only its shadow shows
+  ctx.shadowColor = 'transparent';
+  g = ctx.createLinearGradient(F.x, F.y, F.x + F.pw, F.y + F.ph);
+  g.addColorStop(0, 'rgba(255,255,255,.10)');
+  g.addColorStop(0.45, 'rgba(255,255,255,0)');
+  g.addColorStop(1, 'rgba(255,255,255,.04)');
+  ctx.fillStyle = g;
+  ctx.fillRect(F.x, F.y, F.pw, F.ph);
+  ctx.restore();
+  ctx.fillStyle = 'rgba(255,255,255,.55)'; // paper ridge catching light under the window
+  ctx.fillRect(F.x, chinTop, F.pw, 0.2);
+
+  // Text in device px: tiny mm-sized fonts render poorly under a scale transform.
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const X = (mm) => dx + mm * k, Y = (mm) => dy + mm * k;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  if (!src) {
+    ctx.fillStyle = '#8a867e';
+    ctx.font = `${4 * k}px system-ui, sans-serif`;
+    ctx.fillText('사진을 선택하세요', X(F.x + F.pw / 2), Y(F.y + F.ph / 2));
+  }
+  const text = caption.value.trim();
+  if (text) {
+    const maxW = F.pw * 0.92 * k, size = Math.min(chin * 0.5, 9) * k;
+    ctx.font = `${size}px ${FONT}`;
+    const w = ctx.measureText(text).width;
+    if (w > maxW) ctx.font = `${size * maxW / w}px ${FONT}`;
+    ctx.fillStyle = ink;
+    ctx.fillText(text, X(F.w / 2), Y(chinTop + chin / 2));
+  }
+}
+
+let queued = false;
+function draw() {
+  if (queued) return;
+  queued = true;
+  requestAnimationFrame(() => {
+    queued = false;
+    drawEditor();
+  });
+}
+
+// --- Crop editor -------------------------------------------------------------
+const ecv = $('ecv');
+
+// The canvas is exactly the card; s = css px per mm, wx/wy = photo window on screen.
+function edLayout() {
+  const cw = ecv.clientWidth, s = cw / F.w;
+  return { s, cw, ch: F.h * s, wx: F.x * s, wy: F.y * s, W: F.pw * s, H: F.ph * s };
+}
+
+// The card as it will be saved, plus a rule-of-thirds grid over the photo window.
+function drawEditor() {
+  ecv.style.aspectRatio = `${F.w} / ${F.h}`;
+  const E = edLayout(), dpr = devicePixelRatio || 1;
+  const w = Math.round(E.cw * dpr), h = Math.round(E.ch * dpr);
+  if (ecv.width !== w || ecv.height !== h) { ecv.width = w; ecv.height = h; }
+  const ctx = ecv.getContext('2d');
+  render(ctx, E.s * dpr);
+  if (!src) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = `rgba(255,255,255,${pts.size ? 0.8 : 0.4})`; // brighter while dragging
+  ctx.beginPath();
+  for (const t of [1 / 3, 2 / 3]) {
+    ctx.moveTo(E.wx + E.W * t, E.wy); ctx.lineTo(E.wx + E.W * t, E.wy + E.H);
+    ctx.moveTo(E.wx, E.wy + E.H * t); ctx.lineTo(E.wx + E.W, E.wy + E.H * t);
+  }
+  ctx.stroke();
+
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#fff';
+  ctx.beginPath();
+  for (const [x, y, dx, dy] of [[0, 0, 1, 1], [E.W, 0, -1, 1], [0, E.H, 1, -1], [E.W, E.H, -1, -1]]) {
+    ctx.moveTo(E.wx + x, E.wy + y + dy * 18);
+    ctx.lineTo(E.wx + x, E.wy + y);
+    ctx.lineTo(E.wx + x + dx * 18, E.wy + y);
+  }
+  ctx.stroke();
+}
+
+
+function reset() {
+  if (src) st = center(src.width, src.height, F.pw, F.ph);
+  zoom.value = 1;
+  draw();
+}
+
+$('file').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = ''; // allow picking the same file again
+  if (!file) return;
+  $('error').textContent = '';
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.src = url;
+  try {
+    await img.decode(); // modern browsers apply EXIF orientation to <img> and drawImage
+  } catch {
+    URL.revokeObjectURL(url);
+    $('error').textContent = '이 사진 형식은 열 수 없어요. JPEG나 PNG 사진을 선택해 주세요.';
+    return;
+  }
+  const s = Math.min(1, MAX_SRC / Math.max(img.naturalWidth, img.naturalHeight));
+  const c = document.createElement('canvas');
+  c.width = Math.round(img.naturalWidth * s);
+  c.height = Math.round(img.naturalHeight * s);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  URL.revokeObjectURL(url);
+  src = c;
+  zoom.disabled = $('recenter').disabled = $('make').disabled = false;
+  document.body.classList.add('has-photo');
+  reset();
+});
+
+// Editor gestures: drag with one pointer, pinch with two. Positions are mm relative to the photo window.
+const pts = new Map();
+let last = null;
+const mmPerPx = () => 1 / edLayout().s;
+function toWindow(cx, cy) {
+  const r = ecv.getBoundingClientRect(), E = edLayout();
+  return { x: (cx - r.left - E.wx) / E.s, y: (cy - r.top - E.wy) / E.s };
+}
+function gesture() {
+  const p = [...pts.values()];
+  const g = toWindow(p.reduce((a, q) => a + q.x, 0) / p.length, p.reduce((a, q) => a + q.y, 0) / p.length);
+  g.d = p.length > 1 ? Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) * mmPerPx() : 0;
+  return g;
+}
+ecv.addEventListener('pointerdown', (e) => {
+  if (!src) return;
+  ecv.setPointerCapture(e.pointerId);
+  pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  last = gesture();
+  draw();
+});
+ecv.addEventListener('pointermove', (e) => {
+  if (!pts.has(e.pointerId)) return;
+  pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  const g = gesture();
+  let s = { ...st, ox: st.ox + g.x - last.x, oy: st.oy + g.y - last.y };
+  if (g.d && last.d) s = zoomAt(s, s.z * g.d / last.d, g.x, g.y);
+  st = fit(s);
+  zoom.value = st.z;
+  last = g;
+  draw();
+});
+for (const t of ['pointerup', 'pointercancel']) {
+  ecv.addEventListener(t, (e) => { pts.delete(e.pointerId); last = pts.size ? gesture() : null; draw(); });
+}
+
+ecv.addEventListener('wheel', (e) => {
+  if (!src) return;
+  e.preventDefault();
+  const p = toWindow(e.clientX, e.clientY);
+  st = fit(zoomAt(st, st.z * Math.exp(-e.deltaY * 0.002), p.x, p.y));
+  zoom.value = st.z;
+  draw();
+}, { passive: false });
+zoom.addEventListener('input', () => { st = fit(zoomAt(st, +zoom.value, F.pw / 2, F.ph / 2)); draw(); });
+$('recenter').addEventListener('click', reset);
+caption.addEventListener('input', () => { draw(); document.fonts.load(`20px ${FONT}`, caption.value).then(draw); });
+for (const r of document.querySelectorAll('[name=frame]')) {
+  r.addEventListener('change', () => { F = cardFor(+r.value); reset(); });
+}
+for (const r of document.querySelectorAll('[name=paper]')) {
+  r.addEventListener('change', () => { paper = r.value; ink = r.dataset.ink; draw(); });
+}
+addEventListener('resize', draw);
+
+$('make').addEventListener('click', async () => {
+  await document.fonts.load(`20px ${FONT}`, caption.value || '가'); // never bake in the fallback font
+  const c = document.createElement('canvas');
+  c.width = OUT_W;
+  c.height = Math.ceil(OUT_W * F.h / F.w); // round up so 1.91:1 never ends up wider than allowed
+  render(c.getContext('2d'), OUT_W / F.w);
+  const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.92));
+  if (outUrl) URL.revokeObjectURL(outUrl);
+  outUrl = URL.createObjectURL(blob);
+  outFile = new File([blob], 'instant-frame.jpg', { type: 'image/jpeg' });
+  $('out').src = $('download').href = outUrl;
+  $('share').hidden = !navigator.canShare?.({ files: [outFile] });
+  $('result').hidden = false;
+  $('result').scrollIntoView({ behavior: 'smooth' });
+});
+$('share').addEventListener('click', () => {
+  // ponytail: not awaited — iOS may never settle after "Save Image" (WebKit 231995)
+  navigator.share({ files: [outFile] }).catch(() => {});
+});
+
+draw();
+</script>
+</body>
+</html>
