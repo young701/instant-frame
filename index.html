@@ -144,9 +144,36 @@ grain.width = grain.height = 128;
   for (let i = 0; i < d.data.length; i += 4) {
     const v = Math.random() < 0.5 ? 0 : 255;
     d.data[i] = d.data[i + 1] = d.data[i + 2] = v;
-    d.data[i + 3] = Math.random() * 14;
+    d.data[i + 3] = Math.random() * 22;
   }
   g.putImageData(d, 0, 0);
+}
+
+// Paper body: soft fibre-density blotches plus short loose fibres (256px tile, device px).
+const fibre = document.createElement('canvas');
+fibre.width = fibre.height = 256;
+{
+  const g = fibre.getContext('2d'), T = 256, rnd = Math.random;
+  for (let i = 0; i < 70; i++) {
+    const x = rnd() * T, y = rnd() * T, r = 8 + rnd() * 40, dark = rnd() < 0.5;
+    for (const ox of [-T, 0, T]) for (const oy of [-T, 0, T]) { // wrap so the tile repeats without seams
+      const rg = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r);
+      rg.addColorStop(0, dark ? 'rgba(110,90,60,.025)' : 'rgba(255,255,255,.035)');
+      rg.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = rg;
+      g.fillRect(x + ox - r, y + oy - r, 2 * r, 2 * r);
+    }
+  }
+  g.lineCap = 'round';
+  g.lineWidth = 0.7;
+  for (let i = 0; i < 260; i++) {
+    const x = rnd() * T, y = rnd() * T, a = rnd() * Math.PI * 2, l = 3 + rnd() * 12, b = (rnd() - 0.5) * 1.2;
+    g.strokeStyle = rnd() < 0.6 ? 'rgba(90,70,40,.12)' : 'rgba(255,255,255,.22)';
+    g.beginPath();
+    g.moveTo(x, y);
+    g.quadraticCurveTo(x + Math.cos(a + b) * l / 2, y + Math.sin(a + b) * l / 2, x + Math.cos(a) * l, y + Math.sin(a) * l);
+    g.stroke();
+  }
 }
 
 // One renderer for preview and export, so what you see is what you save.
@@ -170,8 +197,10 @@ function render(ctx, k, dx = 0, dy = 0) { // dx/dy: card offset in device px
 
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.fillStyle = ctx.createPattern(grain, 'repeat');
-  ctx.fillRect(dx, dy, F.w * k, F.h * k);
+  for (const t of [fibre, grain]) {
+    ctx.fillStyle = ctx.createPattern(t, 'repeat');
+    ctx.fillRect(dx, dy, F.w * k, F.h * k);
+  }
   ctx.restore();
 
   ctx.strokeStyle = 'rgba(0,0,0,.10)';
