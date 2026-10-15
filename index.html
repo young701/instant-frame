@@ -69,6 +69,7 @@
     <label class="chip"><input class="vh" type="radio" name="frame" value="mini">instax mini</label>
     <label class="chip"><input class="vh" type="radio" name="frame" value="square">instax square</label>
     <label class="chip"><input class="vh" type="radio" name="frame" value="wide">instax wide</label>
+    <label class="chip"><input class="vh" type="radio" name="frame" value="classic">polaroid</label>
   </fieldset>
   <fieldset>
     <legend>프레임 색</legend>
@@ -142,7 +143,51 @@ function srcRect(s, iw, ih, pw, ph) {
 
 // All sizes in mm. Margins measured from a real Instax Mini scan.
 const SIDE = 4.5, TOP = 7, CHIN = 17;
-const frame = (pw, ph, side = SIDE) => ({ w: pw + 2 * side, h: TOP + ph + CHIN, x: side, y: TOP, pw, ph });
+const frame = (pw, ph, side = SIDE, top = TOP, chin = CHIN) => ({ w: pw + 2 * side, h: top + ph + chin, x: side, y: top, pw, ph });
+
+// Photo-real artwork (transparent WebP). On load, each frame's card box and photo window are read
+// from its alpha, so new art can be dropped in without measuring. Missing art falls back to drawing.
+const ASSETS = {};
+function measure(img, isFrame) {
+  const W = img.naturalWidth, H = img.naturalHeight, c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  x.drawImage(img, 0, 0);
+  const a = x.getImageData(0, 0, W, H).data, op = (i, j) => a[(j * W + i) * 4 + 3] > 128;
+  let x0 = W, y0 = H, x1 = 0, y1 = 0; // opaque bounding box
+  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) if (op(i, j)) {
+    if (i < x0) x0 = i; if (i > x1) x1 = i; if (j < y0) y0 = j; if (j > y1) y1 = j;
+  }
+  const A = { img: c, box: [x0, y0, x1 + 1, y1 + 1] };
+  if (isFrame) { // walk out from inside the window until the frame starts
+    const cx = (x0 + x1) >> 1, cy = Math.round(y0 + (y1 - y0) * 0.4);
+    let l = cx, r = cx, t = cy, b = cy;
+    while (!op(l - 1, cy)) l--;
+    while (!op(r + 1, cy)) r++;
+    while (!op(cx, t - 1)) t--;
+    while (!op(cx, b + 1)) b++;
+    A.win = [l, t, r + 1, b + 1];
+  }
+  return A;
+}
+for (const [name, file] of [['mini', 'frame-mini'], ['square', 'frame-square'], ['wide', 'frame-wide'], ['classic', 'frame-classic'], ['tape', 'tape']]) {
+  const img = new Image();
+  img.onload = () => { ASSETS[name] = measure(img, name !== 'tape'); draw(); };
+  img.src = `assets/${file}.webp`;
+}
+
+// 9-slice the frame art onto card F (mm): corners stay true, borders stretch, window stays empty.
+function drawFrameArt(ctx, A) {
+  const [x0, y0, x1, y1] = A.box, [wx0, wy0, wx1, wy1] = A.win;
+  const sx = [x0, wx0, wx1, x1], sy = [y0, wy0, wy1, y1];
+  const dx = [0, F.x, F.x + F.pw, F.w], dy = [0, F.y, F.y + F.ph, F.h];
+  const o = 0.04; // slight overlap hides hairline seams between slices
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
+    if (i === 1 && j === 1) continue;
+    ctx.drawImage(A.img, sx[i], sy[j], sx[i + 1] - sx[i], sy[j + 1] - sy[j],
+      dx[i], dy[j], dx[i + 1] - dx[i] + (i < 2 ? o : 0), dy[j + 1] - dy[j] + (j < 2 ? o : 0));
+  }
+}
 // The saved image is the card itself, in a fixed Instagram feed ratio (4:5, 1:1, 1.91:1), 1080px wide.
 // The photo never changes the card; it's cropped/zoomed inside the window instead.
 const OUT_W = 1080;
@@ -169,6 +214,23 @@ function drawTape(ctx, k, ox, oy) {
   if (mode === 'none') return;
   const spots = [[F.w / 2, 1, -0.03]];
   if (mode === 'both') spots.push([F.w / 2, F.h - 1, 0.025]);
+  const T = ASSETS.tape;
+  if (T) { // photo-real tape art: real tape width (11mm), length from the art, capped to the card
+    const [x0, y0, x1, y1] = T.box, Hh = Math.min(11, F.h * 0.14), L = Math.min(Hh * (x1 - x0) / (y1 - y0), F.w * 0.9);
+    for (const [cx, cy, angle] of spots) {
+      ctx.save();
+      ctx.setTransform(k, 0, 0, k, ox, oy);
+      ctx.translate(cx, cy);
+      ctx.rotate(angle);
+      ctx.globalAlpha = 0.92; // masking tape lets a little of what's under it show
+      ctx.shadowColor = 'rgba(0,0,0,.12)';
+      ctx.shadowBlur = 0.6 * k;
+      ctx.shadowOffsetY = 0.2 * k;
+      ctx.drawImage(T.img, x0, y0, x1 - x0, y1 - y0, -L / 2, -Hh / 2, L, Hh);
+      ctx.restore();
+    }
+    return;
+  }
   const TL = F.w * 0.8, TH = Math.min(13, F.h * 0.14), teeth = 7; // horizontal strip, torn left/right ends
   const jag = (i) => (Math.sin(i * 12.9898) * 43758.5453 % 1 + 1) % 1 * 1.4; // fixed pseudo-random tear
   for (const [cx, cy, angle] of spots) {
@@ -236,8 +298,9 @@ let src = null, st = null, outUrl = null, outFile = null;
 const FRAMES = {
   '4:5': cardFor(4 / 5), '1:1': cardFor(1), '3:4': cardFor(3 / 4), '4:3': cardFor(4 / 3),
   '16:9': cardFor(16 / 9), '1.91:1': cardFor(1.91),
-  mini: frame(46, 62, 4), square: frame(62, 62, 5), wide: frame(99, 62),
+  mini: frame(46, 62, 4), square: frame(62, 62, 5), wide: frame(99, 62), classic: frame(79, 79, 4.5, 6, 22),
 };
+for (const [key, f] of Object.entries(FRAMES)) f.art = ['mini', 'wide', 'classic'].includes(key) ? key : 'square';
 let F = FRAMES['4:5'];
 
 const fit = (s) => clamp(s, src.width, src.height, F.pw, F.ph);
@@ -246,10 +309,12 @@ const fit = (s) => clamp(s, src.width, src.height, F.pw, F.ph);
 // k = device px per mm; the canvas is exactly the card.
 function render(ctx, k, dx = 0, dy = 0) { // dx/dy: card offset in device px
   const chinTop = F.y + F.ph, chin = F.h - chinTop;
+  const A = ASSETS[F.art];
   ctx.setTransform(k, 0, 0, k, dx, dy);
   ctx.fillStyle = paper;
   ctx.fillRect(0, 0, F.w, F.h);
 
+  if (!A) {
   // Light falloff top→bottom, and the faint seam where the developer pod sits in the chin.
   let g = ctx.createLinearGradient(0, 0, 0, F.h);
   g.addColorStop(0, 'rgba(255,255,255,.16)');
@@ -264,6 +329,7 @@ function render(ctx, k, dx = 0, dy = 0) { // dx/dy: card offset in device px
   ctx.strokeStyle = 'rgba(0,0,0,.10)';
   ctx.lineWidth = 0.12;
   ctx.strokeRect(0.06, 0.06, F.w - 0.12, F.h - 0.12);
+  }
 
   // Photo, recessed under the frame: inner shadow from the top edge plus a faint gloss.
   ctx.save();
@@ -291,8 +357,22 @@ function render(ctx, k, dx = 0, dy = 0) { // dx/dy: card offset in device px
   ctx.fillStyle = g;
   ctx.fillRect(F.x, F.y, F.pw, F.ph);
   ctx.restore();
-  ctx.fillStyle = 'rgba(255,255,255,.55)'; // paper ridge catching light under the window
-  ctx.fillRect(F.x, chinTop, F.pw, 0.2);
+  if (A) {
+    drawFrameArt(ctx, A);
+    if (paper !== '#F7F5F0') { // recolor the cream art, keeping its texture
+      const p = new Path2D();
+      p.rect(0, 0, F.w, F.h);
+      p.rect(F.x, F.y, F.pw, F.ph);
+      ctx.save();
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.fillStyle = paper;
+      ctx.fill(p, 'evenodd');
+      ctx.restore();
+    }
+  } else {
+    ctx.fillStyle = 'rgba(255,255,255,.55)'; // paper ridge catching light under the window
+    ctx.fillRect(F.x, chinTop, F.pw, 0.2);
+  }
 
   // Text in device px: tiny mm-sized fonts render poorly under a scale transform.
   ctx.setTransform(1, 0, 0, 1, 0, 0);
