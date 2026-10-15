@@ -156,6 +156,7 @@ const frame = (pw, ph, side = SIDE, top = TOP, chin = CHIN) => ({ w: pw + 2 * si
 // Photo-real artwork (transparent WebP). On load, each frame's card box and photo window are read
 // from its alpha, so new art can be dropped in without measuring. Missing art falls back to drawing.
 const ASSETS = {};
+const WALL_WHITEN = 0.12; // ponytail: eyeballed; slight lift of the wall photo
 const WHITEN = 0.45; // ponytail: eyeballed; how much whiter than the art the default frame is
 function measure(img, isFrame) {
   const W = img.naturalWidth, H = img.naturalHeight, c = document.createElement('canvas');
@@ -284,6 +285,11 @@ function compose(ctx, W) {
     if (wall) { // wall photo, scaled to cover the backdrop
       const c = Math.max(cw / wall.width, ch / wall.height);
       ctx.drawImage(wall, (cw - wall.width * c) / 2, (ch - wall.height * c) / 2, wall.width * c, wall.height * c);
+      ctx.save(); // lift the wall a touch toward white
+      ctx.globalCompositeOperation = 'screen';
+      ctx.fillStyle = `rgba(255,255,255,${WALL_WHITEN})`;
+      ctx.fillRect(0, 0, cw, ch);
+      ctx.restore();
     } else {
       ctx.fillStyle = BG;
       ctx.fillRect(0, 0, cw, ch);
