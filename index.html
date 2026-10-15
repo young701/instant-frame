@@ -69,6 +69,7 @@
     <label class="chip"><input class="vh" type="radio" name="paper" value="#222222" data-ink="#EDEDED"><span class="sw" style="background:#222222"></span>블랙</label>
     <label class="chip"><input class="vh" type="radio" name="paper" value="#F3D6D2" data-ink="#5A3A36"><span class="sw" style="background:#F3D6D2"></span>핑크</label>
   </fieldset>
+  <label class="chip" style="justify-self:start"><input id="bg" type="checkbox"> 흰 배경에 놓기</label>
   <button id="make" class="btn primary" disabled>이미지 만들기</button>
   <section id="result" hidden>
     <img id="out" alt="완성된 인스턴트 사진">
@@ -119,6 +120,30 @@ const frame = (pw, ph) => ({ w: pw + 2 * SIDE, h: TOP + ph + CHIN, x: SIDE, y: T
 // The saved image is the card itself, in a fixed Instagram feed ratio (4:5, 1:1, 1.91:1), 1080px wide.
 // The photo never changes the card; it's cropped/zoomed inside the window instead.
 const OUT_W = 1080;
+const BG = '#FAFAF8', BG_INSET = 0.84; // "on white" mode: card shrunk to 84% on a backdrop of the same ratio
+
+// Draw the post into a canvas W px wide: the bare card, or the card with a shadow on white.
+// Same ratio either way, so Instagram limits still hold. Returns card scale/offset in px.
+function compose(ctx, W) {
+  const k = W / F.w * ($('bg').checked ? BG_INSET : 1), H = W * F.h / F.w;
+  const ox = (W - F.w * k) / 2, oy = (H - F.h * k) / 2;
+  if ($('bg').checked) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = BG;
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.save();
+    ctx.fillStyle = paper;
+    for (const [a, blur, dy] of [[0.16, 5, 2.2], [0.22, 0.6, 0.25]]) { // soft lift + tight contact, in mm
+      ctx.shadowColor = `rgba(0,0,0,${a})`;
+      ctx.shadowBlur = blur * k;
+      ctx.shadowOffsetY = dy * k;
+      ctx.fillRect(ox, oy, F.w * k, F.h * k);
+    }
+    ctx.restore();
+  }
+  render(ctx, k, ox, oy);
+  return { k, ox, oy };
+}
 
 // Card with outer ratio R (w/h), long side 107mm (classic instant size).
 function cardFor(R) {
@@ -256,8 +281,9 @@ const ecv = $('ecv');
 
 // The canvas is exactly the card; s = css px per mm, wx/wy = photo window on screen.
 function edLayout() {
-  const cw = ecv.clientWidth, s = cw / F.w;
-  return { s, cw, ch: F.h * s, wx: F.x * s, wy: F.y * s, W: F.pw * s, H: F.ph * s };
+  const cw = ecv.clientWidth, ch = cw * F.h / F.w, s = cw / F.w * ($('bg').checked ? BG_INSET : 1);
+  const cx = (cw - F.w * s) / 2, cy = (ch - F.h * s) / 2; // must match compose()
+  return { s, cw, ch, wx: cx + F.x * s, wy: cy + F.y * s, W: F.pw * s, H: F.ph * s };
 }
 
 // The card as it will be saved, plus a rule-of-thirds grid over the photo window.
@@ -267,7 +293,7 @@ function drawEditor() {
   const w = Math.round(E.cw * dpr), h = Math.round(E.ch * dpr);
   if (ecv.width !== w || ecv.height !== h) { ecv.width = w; ecv.height = h; }
   const ctx = ecv.getContext('2d');
-  render(ctx, E.s * dpr);
+  compose(ctx, w);
   if (!src) return;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
@@ -379,13 +405,14 @@ for (const r of document.querySelectorAll('[name=paper]')) {
   r.addEventListener('change', () => { paper = r.value; ink = r.dataset.ink; draw(); });
 }
 addEventListener('resize', draw);
+$('bg').addEventListener('change', draw);
 
 $('make').addEventListener('click', async () => {
   await document.fonts.load(`20px ${FONT}`, caption.value || '가'); // never bake in the fallback font
   const c = document.createElement('canvas');
   c.width = OUT_W;
   c.height = Math.ceil(OUT_W * F.h / F.w); // round up so 1.91:1 never ends up wider than allowed
-  render(c.getContext('2d'), OUT_W / F.w);
+  compose(c.getContext('2d'), OUT_W);
   const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.92));
   if (outUrl) URL.revokeObjectURL(outUrl);
   outUrl = URL.createObjectURL(blob);
