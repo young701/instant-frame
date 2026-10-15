@@ -76,6 +76,12 @@
     <label class="chip"><input class="vh" type="radio" name="paper" value="#222222" data-ink="#EDEDED"><span class="sw" style="background:#222222"></span>블랙</label>
     <label class="chip"><input class="vh" type="radio" name="paper" value="#F3D6D2" data-ink="#5A3A36"><span class="sw" style="background:#F3D6D2"></span>핑크</label>
   </fieldset>
+  <fieldset>
+    <legend>마스킹 테이프</legend>
+    <label class="chip"><input class="vh" type="radio" name="tape" value="none" checked>없음</label>
+    <label class="chip"><input class="vh" type="radio" name="tape" value="top">위</label>
+    <label class="chip"><input class="vh" type="radio" name="tape" value="both">위·아래</label>
+  </fieldset>
   <label class="chip" style="justify-self:start"><input id="bg" type="checkbox"> 흰 배경에 놓기</label>
   <p class="hint" id="bgNote" hidden>이 프레임은 인스타 비율(4:5~1.91:1)을 벗어나서 흰 배경에 놓여요.</p>
   <div id="bgOpts" hidden>
@@ -156,6 +162,41 @@ function place(W) {
 
 // Draw the post into a canvas W px wide: the bare card, or the card with a shadow on white.
 // Same ratio either way, so Instagram limits still hold. Returns card scale/offset in px.
+// Masking tape across the card's top (and bottom) edge: translucent cream strip, torn ends,
+// slightly askew. Drawn in card mm; looks best on white since the overhang needs room.
+function drawTape(ctx, k, ox, oy) {
+  const mode = document.querySelector('[name=tape]:checked').value;
+  if (mode === 'none') return;
+  const spots = [[F.w / 2, -3, -0.05]];
+  if (mode === 'both') spots.push([F.w / 2 + F.w * 0.04, F.h + 3, 0.07]);
+  const TW = Math.min(18, F.w * 0.24), TL = 22, teeth = 9;
+  const jag = (i) => (Math.sin(i * 12.9898) * 43758.5453 % 1 + 1) % 1 * 1.2; // fixed pseudo-random tear
+  for (const [cx, cy, angle] of spots) {
+    ctx.save();
+    ctx.setTransform(k, 0, 0, k, ox, oy);
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+    const p = new Path2D();
+    p.moveTo(-TW / 2, -TL / 2);
+    for (let i = 1; i <= teeth; i++) p.lineTo(-TW / 2 + TW * i / teeth, -TL / 2 + (i % 2 ? jag(i) : 0));
+    for (let i = 1; i <= teeth; i++) p.lineTo(TW / 2 - TW * i / teeth, TL / 2 - (i % 2 ? jag(i + 20) : 0));
+    p.closePath();
+    ctx.shadowColor = 'rgba(0,0,0,.12)';
+    ctx.shadowBlur = 0.6 * k;
+    ctx.shadowOffsetY = 0.2 * k;
+    ctx.fillStyle = 'rgba(240,233,210,.58)';
+    ctx.fill(p);
+    ctx.shadowColor = 'transparent';
+    const g = ctx.createLinearGradient(-TW / 2, 0, TW / 2, 0); // crinkle sheen
+    g.addColorStop(0, 'rgba(255,255,255,.18)');
+    g.addColorStop(0.5, 'rgba(255,255,255,0)');
+    g.addColorStop(1, 'rgba(120,100,60,.06)');
+    ctx.fillStyle = g;
+    ctx.fill(p);
+    ctx.restore();
+  }
+}
+
 function compose(ctx, W) {
   const { k, ox, oy } = place(W);
   if ($('bg').checked) {
@@ -173,6 +214,7 @@ function compose(ctx, W) {
     ctx.restore();
   }
   render(ctx, k, ox, oy);
+  drawTape(ctx, k, ox, oy);
   return { k, ox, oy };
 }
 
@@ -417,6 +459,7 @@ function syncBg() {
   $('bgOpts').hidden = !$('bg').checked;
 }
 $('bg').addEventListener('change', () => { syncBg(); draw(); });
+for (const r of document.querySelectorAll('[name=tape]')) r.addEventListener('change', draw);
 $('inset').addEventListener('input', () => { $('insetVal').textContent = Math.round($('inset').value * 100) + '%'; draw(); });
 for (const r of document.querySelectorAll('[name=bgr]')) r.addEventListener('change', draw);
 
