@@ -162,24 +162,26 @@ function place(W) {
 
 // Draw the post into a canvas W px wide: the bare card, or the card with a shadow on white.
 // Same ratio either way, so Instagram limits still hold. Returns card scale/offset in px.
-// Masking tape across the card's top (and bottom) edge: translucent cream strip, torn ends,
+// Masking tape laid horizontally over the card's top (and bottom) edge: translucent cream strip, torn ends,
 // slightly askew. Drawn in card mm; looks best on white since the overhang needs room.
 function drawTape(ctx, k, ox, oy) {
   const mode = document.querySelector('[name=tape]:checked').value;
   if (mode === 'none') return;
-  const spots = [[F.w / 2, -3, -0.05]];
-  if (mode === 'both') spots.push([F.w / 2 + F.w * 0.04, F.h + 3, 0.07]);
-  const TW = Math.min(18, F.w * 0.24), TL = 22, teeth = 9;
-  const jag = (i) => (Math.sin(i * 12.9898) * 43758.5453 % 1 + 1) % 1 * 1.2; // fixed pseudo-random tear
+  const spots = [[F.w / 2, 1, -0.03]];
+  if (mode === 'both') spots.push([F.w / 2, F.h - 1, 0.025]);
+  const TL = F.w * 0.8, TH = Math.min(13, F.h * 0.14), teeth = 7; // horizontal strip, torn left/right ends
+  const jag = (i) => (Math.sin(i * 12.9898) * 43758.5453 % 1 + 1) % 1 * 1.4; // fixed pseudo-random tear
   for (const [cx, cy, angle] of spots) {
     ctx.save();
     ctx.setTransform(k, 0, 0, k, ox, oy);
     ctx.translate(cx, cy);
     ctx.rotate(angle);
     const p = new Path2D();
-    p.moveTo(-TW / 2, -TL / 2);
-    for (let i = 1; i <= teeth; i++) p.lineTo(-TW / 2 + TW * i / teeth, -TL / 2 + (i % 2 ? jag(i) : 0));
-    for (let i = 1; i <= teeth; i++) p.lineTo(TW / 2 - TW * i / teeth, TL / 2 - (i % 2 ? jag(i + 20) : 0));
+    p.moveTo(-TL / 2, -TH / 2);
+    p.lineTo(TL / 2, -TH / 2);
+    for (let i = 1; i <= teeth; i++) p.lineTo(TL / 2 - (i % 2 ? jag(i) : 0), -TH / 2 + TH * i / teeth);
+    p.lineTo(-TL / 2, TH / 2);
+    for (let i = 1; i <= teeth; i++) p.lineTo(-TL / 2 + (i % 2 ? jag(i + 20) : 0), TH / 2 - TH * i / teeth);
     p.closePath();
     ctx.shadowColor = 'rgba(0,0,0,.12)';
     ctx.shadowBlur = 0.6 * k;
@@ -187,7 +189,7 @@ function drawTape(ctx, k, ox, oy) {
     ctx.fillStyle = 'rgba(240,233,210,.58)';
     ctx.fill(p);
     ctx.shadowColor = 'transparent';
-    const g = ctx.createLinearGradient(-TW / 2, 0, TW / 2, 0); // crinkle sheen
+    const g = ctx.createLinearGradient(0, -TH / 2, 0, TH / 2); // crinkle sheen
     g.addColorStop(0, 'rgba(255,255,255,.18)');
     g.addColorStop(0.5, 'rgba(255,255,255,0)');
     g.addColorStop(1, 'rgba(120,100,60,.06)');
