@@ -73,7 +73,7 @@
   </fieldset>
   <fieldset>
     <legend>프레임 색</legend>
-    <label class="chip"><input class="vh" type="radio" name="paper" value="#F7F5F0" data-ink="#2A2A2A" checked><span class="sw" style="background:#F7F5F0"></span>크림</label>
+    <label class="chip"><input class="vh" type="radio" name="paper" value="#F7F5F0" data-ink="#2A2A2A" checked><span class="sw" style="background:#FFFFFF"></span>화이트</label>
     <label class="chip"><input class="vh" type="radio" name="paper" value="#222222" data-ink="#EDEDED"><span class="sw" style="background:#222222"></span>블랙</label>
     <label class="chip"><input class="vh" type="radio" name="paper" value="#F3D6D2" data-ink="#5A3A36"><span class="sw" style="background:#F3D6D2"></span>핑크</label>
   </fieldset>
@@ -156,6 +156,7 @@ const frame = (pw, ph, side = SIDE, top = TOP, chin = CHIN) => ({ w: pw + 2 * si
 // Photo-real artwork (transparent WebP). On load, each frame's card box and photo window are read
 // from its alpha, so new art can be dropped in without measuring. Missing art falls back to drawing.
 const ASSETS = {};
+const WHITEN = 0.45; // ponytail: eyeballed; how much whiter than the art the default frame is
 function measure(img, isFrame) {
   const W = img.naturalWidth, H = img.naturalHeight, c = document.createElement('canvas');
   c.width = W; c.height = H;
@@ -379,16 +380,17 @@ function render(ctx, k, dx = 0, dy = 0) { // dx/dy: card offset in device px
   ctx.restore();
   if (A) {
     drawFrameArt(ctx, A);
-    if (paper !== '#F7F5F0') { // recolor the cream art, keeping its texture
-      const p = new Path2D();
-      p.rect(0, 0, F.w, F.h);
-      p.rect(F.x, F.y, F.pw, F.ph);
-      ctx.save();
-      ctx.globalCompositeOperation = 'multiply';
-      ctx.fillStyle = paper;
-      ctx.fill(p, 'evenodd');
-      ctx.restore();
-    }
+    // Recolor the art while keeping its texture: brighten the default (screen with white),
+    // or multiply in another paper colour.
+    const p = new Path2D();
+    p.rect(0, 0, F.w, F.h);
+    p.rect(F.x, F.y, F.pw, F.ph);
+    ctx.save();
+    const def = paper === '#F7F5F0';
+    ctx.globalCompositeOperation = def ? 'screen' : 'multiply';
+    ctx.fillStyle = def ? `rgba(255,255,255,${WHITEN})` : paper;
+    ctx.fill(p, 'evenodd');
+    ctx.restore();
   } else {
     ctx.fillStyle = 'rgba(255,255,255,.55)'; // paper ridge catching light under the window
     ctx.fillRect(F.x, chinTop, F.pw, 0.2);
