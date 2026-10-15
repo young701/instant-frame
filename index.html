@@ -138,7 +138,7 @@ const fit = (s) => clamp(s, src.width, src.height, F.pw, F.ph);
 
 // Paper relief like cold-press paper: blurred noise as a height map, lit from the top-left.
 // Neutral highlights/shadows only (no specks or stains). 256px seamless tile, applied in device px.
-const RELIEF = 0.9; // ponytail: eyeballed against a cold-press paper photo; raise for rougher paper
+const RELIEF = 0.5; // ponytail: eyeballed against a cold-press paper photo; raise for rougher paper
 const paperTex = document.createElement('canvas');
 paperTex.width = paperTex.height = 256;
 {
