@@ -37,7 +37,7 @@
   #result:not([hidden]) { display: grid; gap: 8px; }
   #out { width: 100%; display: block; }
   .hint { font-size: 14px; color: var(--muted); margin: 0; }
-  #bgOpts:not([hidden]) { display: grid; gap: 12px; }
+  #bgOpts:not([hidden]), #tapeOpts:not([hidden]) { display: grid; gap: 12px; }
   /* The preview is also the editor: drag/zoom the photo right on the card. */
   #ecv { width: 100%; display: block; touch-action: none; box-shadow: 0 1px 2px rgba(0,0,0,.22), 0 10px 24px rgba(0,0,0,.18); }
   .has-photo #ecv { cursor: grab; }
@@ -83,6 +83,14 @@
     <label class="chip"><input class="vh" type="radio" name="tape" value="top">위</label>
     <label class="chip"><input class="vh" type="radio" name="tape" value="both">위·아래</label>
   </fieldset>
+  <div id="tapeOpts" hidden>
+    <label class="field">테이프 크기 <span id="tapeSizeVal">100%</span>
+      <input id="tapeSize" type="range" min="0.5" max="1.5" step="0.1" value="1">
+    </label>
+    <label class="field">테이프 투명도 <span id="tapeAlphaVal">90%</span>
+      <input id="tapeAlpha" type="range" min="0.3" max="1" step="0.1" value="0.9">
+    </label>
+  </div>
   <label class="chip" style="justify-self:start"><input id="bg" type="checkbox"> 흰 배경에 놓기</label>
   <p class="hint" id="bgNote" hidden>이 프레임은 인스타 비율(4:5~1.91:1)을 벗어나서 흰 배경에 놓여요.</p>
   <div id="bgOpts" hidden>
@@ -170,6 +178,11 @@ function measure(img, isFrame) {
   }
   return A;
 }
+{ // optional wall photo for the backdrop (assets/wall.webp); plain white when absent
+  const img = new Image();
+  img.onload = () => { ASSETS.wall = img; draw(); };
+  img.src = 'assets/wall.webp';
+}
 for (const [name, file] of [['mini', 'frame-mini'], ['square', 'frame-square'], ['wide', 'frame-wide'], ['classic', 'frame-classic'], ['tape', 'tape']]) {
   const img = new Image();
   img.onload = () => { ASSETS[name] = measure(img, name !== 'tape'); draw(); };
@@ -216,13 +229,14 @@ function drawTape(ctx, k, ox, oy) {
   if (mode === 'both') spots.push([F.w / 2, F.h - 1, 0.025]);
   const T = ASSETS.tape;
   if (T) { // photo-real tape art: real tape width (11mm), length from the art, capped to the card
-    const [x0, y0, x1, y1] = T.box, Hh = Math.min(11, F.h * 0.14), L = Math.min(Hh * (x1 - x0) / (y1 - y0), F.w * 0.9);
+    const s = +$('tapeSize').value, [x0, y0, x1, y1] = T.box;
+    const Hh = Math.min(11, F.h * 0.14) * s, L = Math.min(Hh * (x1 - x0) / (y1 - y0), F.w * 0.9 * s);
     for (const [cx, cy, angle] of spots) {
       ctx.save();
       ctx.setTransform(k, 0, 0, k, ox, oy);
       ctx.translate(cx, cy);
       ctx.rotate(angle);
-      ctx.globalAlpha = 0.92; // masking tape lets a little of what's under it show
+      ctx.globalAlpha = +$('tapeAlpha').value; // opacity slider: real tape lets some of what's under it show
       ctx.shadowColor = 'rgba(0,0,0,.12)';
       ctx.shadowBlur = 0.6 * k;
       ctx.shadowOffsetY = 0.2 * k;
@@ -265,8 +279,14 @@ function compose(ctx, W) {
   const { k, ox, oy } = place(W);
   if ($('bg').checked) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = BG;
-    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    const wall = ASSETS.wall, cw = ctx.canvas.width, ch = ctx.canvas.height;
+    if (wall) { // wall photo, scaled to cover the backdrop
+      const c = Math.max(cw / wall.width, ch / wall.height);
+      ctx.drawImage(wall, (cw - wall.width * c) / 2, (ch - wall.height * c) / 2, wall.width * c, wall.height * c);
+    } else {
+      ctx.fillStyle = BG;
+      ctx.fillRect(0, 0, cw, ch);
+    }
     ctx.save();
     ctx.fillStyle = paper;
     for (const [a, blur, dy] of [[0.16, 5, 2.2], [0.22, 0.6, 0.25]]) { // soft lift + tight contact, in mm
@@ -541,7 +561,10 @@ function syncBg() {
   $('bgOpts').hidden = !$('bg').checked;
 }
 $('bg').addEventListener('change', () => { syncBg(); draw(); });
-for (const r of document.querySelectorAll('[name=tape]')) r.addEventListener('change', draw);
+for (const r of document.querySelectorAll('[name=tape]')) r.addEventListener('change', () => { $('tapeOpts').hidden = r.value === 'none'; draw(); });
+for (const [id, label] of [['tapeSize', 'tapeSizeVal'], ['tapeAlpha', 'tapeAlphaVal']]) {
+  $(id).addEventListener('input', () => { $(label).textContent = Math.round($(id).value * 100) + '%'; draw(); });
+}
 $('inset').addEventListener('input', () => { $('insetVal').textContent = Math.round($('inset').value * 100) + '%'; draw(); });
 for (const r of document.querySelectorAll('[name=bgr]')) r.addEventListener('change', draw);
 
